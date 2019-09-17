@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 #from ngi_pipeline.database.classes import CharonSession, CharonError
+import os
+import glob
 import click
 
 @click.command()
@@ -19,7 +21,7 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs):
 
     for sample in samples_to_analyse:
         sample_status = check_analysis_status(sample)
-        if sample_status == 'TO_ANALYZE':
+        if sample_status == 'TO_ANALYZE' and fastq_exists(project_id, sample):
             make_tsv(sample, gender, project_id)
             make_sbatch_script(sample)
             if not no_submit_jobs:
@@ -33,36 +35,47 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs):
 
 
 def get_samples_from_charon(pid):
-    """Given a project ID, get a list of samples from Charon"""
-    samples = ['sample1', 'sample4', 'sample5']
+    """TODO: Given a project ID, get a list of samples from Charon"""
+    samples = ['P9451_401', 'P9451_402']
     return samples
 
 def check_analysis_status(sample):
-    """Given a sample id, connect to charon and return the analysis status"""
-    if sample == 'sample1' or sample == 'sample4':
+    """TODO: Given a sample id, connect to charon and return the analysis status"""
+    if sample == 'P9451_401':
         analysis_status = "TO_ANALYZE"
     else:
         analysis_status = "ANALYSED"
     return analysis_status
 
+def fastq_exists(pid, sample):
+    """Given a sample, check if the fastq files exist"""
+    path_pattern = os.path.join('/Users/sara.sjunnebo/code/scratch/DATA', pid, sample, '*/*/*.gz') # Assuming R1 and R2 are the only .gz files in the data dir
+    paths = glob.glob(path_pattern)
+    if not paths:
+        print("Can't find fastq files for sample " + sample) #TODO: Log/warn this
+        return False
+    else:
+        return True
+
 def make_tsv(sample, gender, project_id):
-    """Given a sample and a project ID, generate a tsv file for input to Sarek"""
+    """TODO: Given a sample and a project ID, generate a tsv file for input to Sarek"""
     print('Writing tsvfile for ' + sample)
     return
 
 def make_sbatch_script(sample):
+    """TODO: Given a sample, make the sbatch script to start a Sarek run"""
     print('Writing sbatch script for ' + sample)
     return
 
 def submit_sbatch_job(sample):
+    """TODO: Given a sample, submit the Sarek run"""
     print("Submitting sbatch job for " + sample)
     return
 
 def update_analysis_status(sample):
+    """TODO: Given a sample, update the analysis status in Charon"""
     print("Updated the analys status in Charon for " + sample)
     return
-
-
 
 
 
