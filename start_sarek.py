@@ -23,7 +23,7 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
     charon_connection = CharonSession()
     sample_entries = charon_connection.project_get_samples(project_id).get("samples", {})   # Returns a list with one dict per sample
 
-#TODO: add option sample_list that can filter out specific samples to run analysis for from a list provided
+#TODO: add option sample_list that can filter out specific samples to run analysis for from a list provided. if sample_name in samples_to_analyse
 #    if sample_list:
 #        with open(sample_list, 'r') as sample_input_file:
 #            samples_to_analyse = sample_input_file.read().splitlines()
@@ -43,40 +43,29 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                 tsv_file_path = os.path.join(analysis_path, sample_name + '.tsv')
                 make_tsv(sample_name, gender, project_id, sample_data_paths, tsv_file_path)
 
-                sbatch_file = make_sbatch_script(sample_name, tsv_file_path)
+                sbatch_file_path = os.path.join(analysis_path, "run_germline" + sample_name + ".sbatch")
+                make_sbatch_script(sample_name, project_id, sbatch_file_path)
 
-                if not no_submit_jobs:
-                    submit_sbatch_job(sample_name)   # TODO: Should catch the output
-                    update_analysis_status(sample_name)
-                else:
+                if no_submit_jobs:
                     print("Generated files. Not submitting jobs.")
                     break
+                else:
+                    submit_sbatch_job(sample_name)   # TODO: Should catch the output
+                    update_analysis_status(sample_name)
             else:
                 print("Issue locating fastq files - Not analyzing sample: " + sample_name) # TODO: Log/warn this
         else:
             print("Sample status not 'TO_ANALYZE' - Not analysing sample: " + sample_name)
 
 
-def get_samples_from_charon(sample_entries_from_charon):
-    """TODO: Given a project ID, get a list of samples from Charon"""
-    samples = []
-    for sample_entry in sample_entries_from_charon:
-        sample_name = sample_entry.get("sampleid")
-        samples.append(sample_name)
-
-    return samples
-
-
-def check_analysis_status(sample):
-    """TODO: Given a sample id, connect to charon and
-    return the analysis status
-    """
-    if sample == 'P9451_401' or sample == 'P9451_402':
-        analysis_status = "TO_ANALYZE"
-    else:
-        analysis_status = "ANALYSED"
-
-    return analysis_status
+#def get_samples_from_charon(sample_entries_from_charon):
+#    """Given a project ID, get a list of samples from Charon"""
+#    samples = []
+#    for sample_entry in sample_entries_from_charon:
+#        sample_name = sample_entry.get("sampleid")
+#        samples.append(sample_name)
+#
+#    return samples
 
 
 def get_fastq_files(pid, sampleid):
@@ -116,8 +105,16 @@ def make_analysis_dir(analysis_path):
     return
 
 
-def make_sbatch_script(sample, tsv):
+def make_sbatch_script(sample, project_id, sbatch_path):
     """TODO: Given a sample, make the sbatch script to start a Sarek run"""
+    placeholders = ("PROJECT_ID", "SAMPLE_ID")
+    replacements = (project_id, sample)
+    with open("/Users/sara.sjunnebo/code/scratch/run_germline_template.sbatch", "r") as infile:   # TODO: Get file path from config?
+        with open(sbatch_path, 'w') as outfile:
+            for line in infile:
+                for placeholder, replacement in zip(placeholders, replacements):
+                    line = line.replace(placeholder, replacement)
+                outfile.write(line)
     print('Writing sbatch script for ' + sample)
 
     return
