@@ -3,6 +3,7 @@ from ngi_pipeline.database.classes import CharonSession, CharonError
 import os
 import glob
 import click
+import subprocess
 
 @click.command()
 @click.option('--gender', type=click.Choice(['XX', 'XY']),
@@ -22,7 +23,7 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
     """
     charon_connection = CharonSession()
     sample_entries = charon_connection.project_get_samples(project_id).get("samples", {})   # Returns a list with one dict per sample
-
+ 
 #TODO: add option sample_list that can filter out specific samples to run analysis for from a list provided. if sample_name in samples_to_analyse
 #    if sample_list:
 #        with open(sample_list, 'r') as sample_input_file:
@@ -50,8 +51,11 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                     print("Generated files. Not submitting jobs.")
                     break
                 else:
-                    submit_sbatch_job(sample_name)   # TODO: Should catch the output
-                    update_analysis_status(sample_name)
+                    submit_sbatch_job(sample_name, sbatch_file_path)   # TODO: Should catch the output
+                    charon_connection.sample_update(project_id, sample_name, analysis_status='UNDER_ANALYSIS')
+                    print("Updated analysis status in charon for " + sample_name) # TODO: Log this and add check that the status was updated
+
+                # TODO: When the sbatch job is done, get the status (success/fail) and update charon (ANALYZED)
             else:
                 print("Issue locating fastq files - Not analyzing sample: " + sample_name) # TODO: Log/warn this
         else:
@@ -106,7 +110,7 @@ def make_analysis_dir(analysis_path):
 
 
 def make_sbatch_script(sample, project_id, sbatch_path):
-    """TODO: Given a sample, make the sbatch script to start a Sarek run"""
+    """Given a sample, make the sbatch script to start a Sarek run"""
     placeholders = ("PROJECT_ID", "SAMPLE_ID")
     replacements = (project_id, sample)
     with open("/Users/sara.sjunnebo/code/scratch/run_germline_template.sbatch", "r") as infile:   # TODO: Get file path from config?
@@ -120,18 +124,15 @@ def make_sbatch_script(sample, project_id, sbatch_path):
     return
 
 
-def submit_sbatch_job(sample):
-    """TODO: Given a sample, submit the Sarek run"""
-    print("Submitting sbatch job for " + sample)
-    # cd <analysis_path>
-    # sbatch -J sample_id_sarek -e <sample_id>_sarek.err -o <sample_id>_sarek.out /proj/ngi2016003/nobackup/start_sarek/run_germline.sbatch <project_id> <sample_id>
-
-    return
-
-
-def update_analysis_status(sample):
-    """TODO: Given a sample, update the analysis status in Charon"""
-    print("Updated the analys status in Charon for " + sample)
+def submit_sbatch_job(sample, sbatch_path):
+    """Given a sample, script and project, submit the Sarek run"""
+#    subprocess.call(["sbatch",
+#                     "-J", sample + "_sarek",
+#                     "-e", sample + "_sarek.err",
+#                     "-o", sample + "_sarek.out",
+#                     sbatch_path) # sbatch script already contains pid and sample id
+    subprocess.call(["echo", "sbatch -J {0}_sarek -e {0}_sarek.err -o {0}_sarek.out {1}".format(sample, sbatch_path)]) # TODO: run job instead of echo, see above line
+    print("Submitting sbatch job for " + sample) # TODO: log this and also print the job id
 
     return
 
