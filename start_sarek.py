@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 from ngi_pipeline.database.classes import CharonSession, CharonError
+from ngi_pipeline.utils.slurm import get_slurm_job_status
 import os
 import glob
 import click
 import subprocess
+import time
+
 
 @click.command()
 @click.option('--gender', type=click.Choice(['XX', 'XY']),
@@ -51,11 +54,13 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                     print("Generated files. Not submitting jobs.")
                     break
                 else:
-                    submit_sbatch_job(sample_name, sbatch_file_path)   # TODO: Should catch the output
+                    job_id = submit_sbatch_job(sample_name, sbatch_file_path)
                     charon_connection.sample_update(project_id, sample_name, analysis_status='UNDER_ANALYSIS')
                     print("Updated analysis status in charon for " + sample_name) # TODO: Log this and add check that the status was updated
 
-                # TODO: When the sbatch job is done, get the status (success/fail) and update charon (ANALYZED)
+                    while get_slurm_job_status(slurm_job_id) is None:
+                        time.sleep(15)
+                    # TODO: When the sbatch job is done, get the status (success/fail) and update charon (ANALYZED)
             else:
                 print("Issue locating fastq files - Not analyzing sample: " + sample_name) # TODO: Log/warn this
         else:
@@ -126,15 +131,20 @@ def make_sbatch_script(sample, project_id, sbatch_path):
 
 def submit_sbatch_job(sample, sbatch_path):
     """Given a sample, script and project, submit the Sarek run"""
-#    subprocess.call(["sbatch",
-#                     "-J", sample + "_sarek",
-#                     "-e", sample + "_sarek.err",
-#                     "-o", sample + "_sarek.out",
-#                     sbatch_path) # sbatch script already contains pid and sample id
-    subprocess.call(["echo", "sbatch -J {0}_sarek -e {0}_sarek.err -o {0}_sarek.out {1}".format(sample, sbatch_path)]) # TODO: run job instead of echo, see above line
-    print("Submitting sbatch job for " + sample) # TODO: log this and also print the job id
+    process_handle = subprocess.Popen(["sbatch",
+                     "-J", sample + "_sarek",
+                     "-e", sample + "_sarek.err",
+                     "-o", sample + "_sarek.out",
+                     sbatch_path]) # sbatch script already contains pid and sample id
 
-    return
+    process_out, process_err = process_handle.communicate()
+    print("Submitting sbatch job for " + sample) # TODO: log this and also print the job id
+    try:
+        slurm_job_id = re.match(r'Submitted batch job (\d+)', process_out).groups()[0]
+    except AttributeError:
+        raise RuntimeError('Could not submit sbatch file "{}": '
+                           '{}'.format(sbatch_path, process_err))
+    return int(slurm_job_id)
 
 
 if __name__ == '__main__':
