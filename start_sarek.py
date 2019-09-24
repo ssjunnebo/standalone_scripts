@@ -58,9 +58,17 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                     charon_connection.sample_update(project_id, sample_name, analysis_status='UNDER_ANALYSIS')
                     print("Updated analysis status in charon for " + sample_name) # TODO: Log this and add check that the status was updated
 
-                    while get_slurm_job_status(slurm_job_id) is None:
-                        time.sleep(15)
-                    # TODO: When the sbatch job is done, get the status (success/fail) and update charon (ANALYZED)
+                    time.sleep(5)     # Allow some time for the job to get picked up
+                    while get_slurm_job_status(job_id) is None:
+                        time.sleep(900)    # Check again in 15 minutes
+
+                    if get_slurm_job_status(job_id) == 0:
+                        print("Slurm job for sample " + sample_name + " finished") # TODO: log this
+                        # TODO: check output files and update charon
+                    elif get_slurm_job_status(job_id) == 1:
+                        print("There was an issue while executing the slurm job for sample " + sample_name + ". Please check the log files for details.") # TODO: log this
+                        # TODO: update charon?
+
             else:
                 print("Issue locating fastq files - Not analyzing sample: " + sample_name) # TODO: Log/warn this
         else:
