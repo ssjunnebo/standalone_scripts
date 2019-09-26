@@ -2,6 +2,7 @@
 from ngi_pipeline.database.classes import CharonSession, CharonError
 from ngi_pipeline.utils.slurm import get_slurm_job_status
 from ngi_pipeline.utils.slurm import get_slurm_job_status
+from ngi_pipeline.utils.config import load_yaml_config, locate_ngi_config
 from ngi_pipeline.engines.sarek.process import ProcessConnector
 from ngi_pipeline.engines.piper_ngi.database import get_db_session, SampleAnalysis
 import os
@@ -30,7 +31,11 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
     """
     charon_connection = CharonSession()
     sample_entries = charon_connection.project_get_samples(project_id).get("samples", {})   # Returns a list with one dict per sample
- 
+    config = load_yaml_config(locate_ngi_config())
+    project_base_path = config['start_sarek']['project_base_path'] # TODO: should this be the path for the uppmax project or the analysis project?
+    project_id = config['environment']['project_id']
+    template_path = config['start_sarek']['sbatch_template']
+
 #TODO: add option sample_list that can filter out specific samples to run analysis for from a list provided. if sample_name in samples_to_analyse
 #    if sample_list:
 #        with open(sample_list, 'r') as sample_input_file:
@@ -42,17 +47,17 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
         sample_name = sample_entry.get("sampleid")
         sample_status = sample_entry.get("analysis_status")
         if sample_status == 'TO_ANALYZE':
-            sample_data_paths = get_fastq_files(project_id, sample_name)
+            sample_data_paths = get_fastq_files(project_base_path, project_id, sample_name)
 
             if sample_data_paths: # TODO: this will only indicate if the R1 files exsist. Should also look for the R2 files somewhere
-                analysis_path = os.path.join('/Users/sara.sjunnebo/code/scratch/ANALYSIS', project_id, 'sarek_ngi', sample_name) # TODO: get path from config file?
+                analysis_path = os.path.join(project_base_path, 'ANALYSIS', project_id, 'sarek_ngi', sample_name)
                 make_analysis_dir(analysis_path)
 
                 tsv_file_path = os.path.join(analysis_path, sample_name + '.tsv')
                 make_tsv(sample_name, gender, project_id, sample_data_paths, tsv_file_path)
 
                 sbatch_file_path = os.path.join(analysis_path, "run_germline" + sample_name + ".sbatch")
-                make_sbatch_script(sample_name, project_id, sbatch_file_path)
+                make_sbatch_script(sample_name, project_id, sbatch_file_path, template_path)
 
                 if no_submit_jobs:
                     print("Generated files. Not submitting jobs.")
@@ -62,10 +67,8 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                     charon_connection.sample_update(project_id, sample_name, analysis_status='UNDER_ANALYSIS')
                     print("Updated analysis status in charon for " + sample_name) # TODO: Log this and add check that the status was updated
 
-                    time.sleep(5)
-                    conf = need_to_get_conf_dir # TODO: Get the conf yaml so that this is a dict
-                    project_id = get_this_from_conf # TODO: implement config
-                    project_base_path = get_this_from_conf_or_sample_data_path # TODO: Implement config
+                    # Update local tracking database with jobinfo
+                    time.sleep(3)
 
                     db_obj = SampleAnalysis(
                         project_id=project_id,
@@ -77,7 +80,7 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                         analysis_dir=analysis_path,
                         **{'slurm_job_id': job_id})
 
-                    with db_session(conf) as db_session:
+                    with db_session(config) as db_session:
                         db_session.add(db_obj)
                         db_session.commit()
 
@@ -97,11 +100,11 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
 #    return samples
 
 
-def get_fastq_files(pid, sampleid):
+def get_fastq_files(project_path, project_id, sample_id):
     """Given a project and sample ID, return a list of paths to the fastq files.
     If the files don't exist, an empty list is returned.
     """
-    path_pattern = os.path.join('/Users/sara.sjunnebo/code/scratch/DATA', pid, sampleid, '*/*/*R1*.gz') # TODO: get path from config file? 
+    path_pattern = os.path.join(project_path, 'DATA', project_id, sample_id, '*/*/*R1*.gz')
     sample_fastq_paths = glob.glob(path_pattern)
 
     return sample_fastq_paths
@@ -134,11 +137,11 @@ def make_analysis_dir(analysis_path):
     return
 
 
-def make_sbatch_script(sample, project_id, sbatch_path):
+def make_sbatch_script(sample, project_id, sbatch_path, template):
     """Given a sample, make the sbatch script to start a Sarek run"""
     placeholders = ("PROJECT_ID", "SAMPLE_ID")
     replacements = (project_id, sample)
-    with open("/Users/sara.sjunnebo/code/scratch/run_germline_template.sbatch", "r") as infile:   # TODO: Get file path from config?
+    with open(template, "r") as infile:
         with open(sbatch_path, 'w') as outfile:
             for line in infile:
                 for placeholder, replacement in zip(placeholders, replacements):
