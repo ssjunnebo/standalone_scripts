@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 from ngi_pipeline.database.classes import CharonSession, CharonError
 from ngi_pipeline.utils.slurm import get_slurm_job_status
+from ngi_pipeline.utils.slurm import get_slurm_job_status
+from ngi_pipeline.engines.sarek.process import ProcessConnector
+from ngi_pipeline.engines.piper_ngi.database import get_db_session, SampleAnalysis
 import os
 import glob
 import click
 import subprocess
 import time
+import contextlib
 
 
 @click.command()
@@ -58,16 +62,24 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                     charon_connection.sample_update(project_id, sample_name, analysis_status='UNDER_ANALYSIS')
                     print("Updated analysis status in charon for " + sample_name) # TODO: Log this and add check that the status was updated
 
-                    time.sleep(5)     # Allow some time for the job to get picked up
-                    while get_slurm_job_status(job_id) is None:
-                        time.sleep(900)    # Check again in 15 minutes
+                    time.sleep(5)
+                    conf = need_to_get_conf_dir # TODO: Get the conf yaml so that this is a dict
+                    project_id = get_this_from_conf # TODO: implement config
+                    project_base_path = get_this_from_conf_or_sample_data_path # TODO: Implement config
 
-                    if get_slurm_job_status(job_id) == 0:
-                        print("Slurm job for sample " + sample_name + " finished") # TODO: log this
-                        # TODO: check output files and update charon
-                    elif get_slurm_job_status(job_id) == 1:
-                        print("There was an issue while executing the slurm job for sample " + sample_name + ". Please check the log files for details.") # TODO: log this
-                        # TODO: update charon?
+                    db_obj = SampleAnalysis(
+                        project_id=project_id,
+                        project_name=projec_tid,
+                        sample_id=sample_name,
+                        project_base_path=project_base_path,
+                        workflow='SarekGermlineAnalysis',  # TODO: implement for somatic later
+                        engine='sarek',
+                        analysis_dir=analysis_path,
+                        **{'slurm_job_id': job_id})
+
+                    with db_session(conf) as db_session:
+                        db_session.add(db_obj)
+                        db_session.commit()
 
             else:
                 print("Issue locating fastq files - Not analyzing sample: " + sample_name) # TODO: Log/warn this
@@ -153,6 +165,15 @@ def submit_sbatch_job(sample, sbatch_path):
         raise RuntimeError('Could not submit sbatch file "{}": '
                            '{}'.format(sbatch_path, process_err))
     return int(slurm_job_id)
+
+@contextlib.contextmanager
+def db_session(conf):
+"""
+Context manager for the database session
+"""
+    with get_db_session(config=conf) as db_session:
+        tracking_session = db_session
+        yield tracking_session
 
 
 if __name__ == '__main__':
