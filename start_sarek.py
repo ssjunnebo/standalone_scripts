@@ -6,6 +6,7 @@ from ngi_pipeline.utils.config import load_yaml_config, locate_ngi_config
 from ngi_pipeline.engines.sarek.process import ProcessConnector
 from ngi_pipeline.engines.piper_ngi.database import get_db_session, SampleAnalysis
 import os
+import re
 import glob
 import click
 import subprocess
@@ -33,7 +34,7 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
     sample_entries = charon_connection.project_get_samples(project_id).get("samples", {})   # Returns a list with one dict per sample
     config = load_yaml_config(locate_ngi_config())
     project_base_path = config['start_sarek']['project_base_path'] # TODO: should this be the path for the uppmax project or the analysis project?
-    project_id = config['environment']['project_id']
+    ngi_project_id = config['environment']['project_id']
     template_path = config['start_sarek']['sbatch_template']
 
 #TODO: add option sample_list that can filter out specific samples to run analysis for from a list provided. if sample_name in samples_to_analyse
@@ -68,11 +69,11 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                     print("Updated analysis status in charon for " + sample_name) # TODO: Log this and add check that the status was updated
 
                     # Update local tracking database with jobinfo
-                    time.sleep(3)
+                    time.sleep(5)
 
                     db_obj = SampleAnalysis(
-                        project_id=project_id,
-                        project_name=projec_tid,
+                        project_id=ngi_project_id,
+                        project_name=ngi_project_id,
                         sample_id=sample_name,
                         project_base_path=project_base_path,
                         workflow='SarekGermlineAnalysis',  # TODO: implement for somatic later
@@ -80,7 +81,7 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                         analysis_dir=analysis_path,
                         **{'slurm_job_id': job_id})
 
-                    with db_session(config) as db_session:
+                    with database_session(config) as db_session:
                         db_session.add(db_obj)
                         db_session.commit()
 
@@ -158,7 +159,7 @@ def submit_sbatch_job(sample, sbatch_path):
                      "-J", sample + "_sarek",
                      "-e", sample + "_sarek.err",
                      "-o", sample + "_sarek.out",
-                     sbatch_path]) # sbatch script already contains pid and sample id
+                    sbatch_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE) # sbatch script already contains pid and sample id
 
     process_out, process_err = process_handle.communicate()
     print("Submitting sbatch job for " + sample) # TODO: log this and also print the job id
@@ -170,10 +171,10 @@ def submit_sbatch_job(sample, sbatch_path):
     return int(slurm_job_id)
 
 @contextlib.contextmanager
-def db_session(conf):
-"""
-Context manager for the database session
-"""
+def database_session(conf):
+    """
+    Context manager for the database session
+    """
     with get_db_session(config=conf) as db_session:
         tracking_session = db_session
         yield tracking_session
