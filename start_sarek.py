@@ -16,17 +16,21 @@ import contextlib
 
 @click.command()
 @click.option('--gender', type=click.Choice(['XX', 'XY']),
+              required=True,
               help="Gender of sample")
 @click.option('--sample_list', type=click.Path(exists=True), default=None,
               help="Optional list of sample ids to include in the analysis run")
 @click.option('--no_submit_jobs', is_flag=True,
               help="Only generate the tsv files and sbatch scripts")
 @click.option('--mode', type=click.Choice(['germline', 'somatic']),
-              help="Run Sarek germline or somatic")
+              help="Run Sarek germline or somatic") # TODO: Make this required once implemented
+@click.option('--genome', type=click.Choice(['GRCh37', 'GRCh38']),
+              required=True,
+              help="Run Sarek with GRCh37 or GRCh38")
 @click.argument('project_id')
 
 
-def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
+def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode, genome):
     """Given a project ID, launch Sarek analysis for all samples in that project
     with analysis status set to 'TO_ANALYZE' in Charon.
     """
@@ -58,13 +62,14 @@ def start_sarek(project_id, gender, sample_list, no_submit_jobs, mode):
                 make_tsv(sample_name, gender, project_id, sample_data_paths, tsv_file_path)
 
                 sbatch_file_path = os.path.join(analysis_path, "run_germline" + sample_name + ".sbatch")
-                make_sbatch_script(sample_name, project_id, sbatch_file_path, template_path)
+                make_sbatch_script(sample_name, project_id, genome, sbatch_file_path, template_path)
 
                 if no_submit_jobs:
                     print("Generated files. Not submitting jobs.")
                     break
                 else:
-                    job_id = submit_sbatch_job(sample_name, sbatch_file_path)
+                    job_id = submit_sbatch_job(sample_name, analysis_path, sbatch_file_path)
+                    print("Sarek job " + str(job_id) + " submitted for sample " + sample_name) # TODO: Log this
                     charon_connection.sample_update(project_id, sample_name, analysis_status='UNDER_ANALYSIS')
                     print("Updated analysis status in charon for " + sample_name) # TODO: Log this and add check that the status was updated
 
@@ -138,10 +143,10 @@ def make_analysis_dir(analysis_path):
     return
 
 
-def make_sbatch_script(sample, project_id, sbatch_path, template):
+def make_sbatch_script(sample, project_id, reference, sbatch_path, template):
     """Given a sample, make the sbatch script to start a Sarek run"""
-    placeholders = ("PROJECT_ID", "SAMPLE_ID")
-    replacements = (project_id, sample)
+    placeholders = ("PROJECT_ID", "SAMPLE_ID", "REFERENCE")
+    replacements = (project_id, sample, reference)
     with open(template, "r") as infile:
         with open(sbatch_path, 'w') as outfile:
             for line in infile:
@@ -153,12 +158,12 @@ def make_sbatch_script(sample, project_id, sbatch_path, template):
     return
 
 
-def submit_sbatch_job(sample, sbatch_path):
+def submit_sbatch_job(sample, analysis_dir, sbatch_path):
     """Given a sample, script and project, submit the Sarek run"""
     process_handle = subprocess.Popen(["sbatch",
                      "-J", sample + "_sarek",
-                     "-e", sample + "_sarek.err",
-                     "-o", sample + "_sarek.out",
+                     "-e", os.path.join(analysis_dir, sample + "_sarek.err"),
+                     "-o", os.path.join(analysis_dir, sample + "_sarek.out"),
                     sbatch_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE) # sbatch script already contains pid and sample id
 
     process_out, process_err = process_handle.communicate()
