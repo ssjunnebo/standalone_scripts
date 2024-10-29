@@ -378,8 +378,8 @@ def process_data(sensors_json, samples_dict, start_time, nr_samples_requested):
 
         # The dropna is needed since sometimes we get sparse samples
         # and might have hours without samples.
-        hourly_mean = sensor_samples.resample("1H").mean().dropna()
-        for hour, mean_val in hourly_mean.iteritems():
+        hourly_mean = sensor_samples.resample("1h").mean().dropna()
+        for hour, mean_val in hourly_mean.items():
             # Don't add any hourly mean values where we've saved more detailed info
             if not sd.time_in_any_extended_interval(hour):
                 sd.saved_samples[hour.strftime("%Y-%m-%dT%H:%M:%S")] = round(
@@ -402,7 +402,7 @@ def main(
     try:
         if arg_start_date is None:
             # Start time is the start of the previous hour
-            start_date_datetime = datetime.datetime.utcnow() - datetime.timedelta(
+            start_date_datetime = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 hours=1
             )
             start_date_datetime = start_date_datetime.replace(
