@@ -177,7 +177,10 @@ class SensorDocument(object):
 
         interval_points = []
         extended_intervals = []
-        for interval in np.split(sample_series, gap_positions):
+        # Initialize the starting index for slicing
+        start_idx = 0
+        for end_idx in gap_positions:
+            interval = sample_series.iloc[start_idx:end_idx]
             lower = interval.index[0]
             upper = interval.index[-1]
             interval_points.append((lower, upper))
@@ -185,6 +188,16 @@ class SensorDocument(object):
             extend_lower = lower - np.timedelta64(1, "h")
             extend_upper = upper + np.timedelta64(1, "h")
             extended_intervals.append((extend_lower, extend_upper))
+            start_idx = end_idx
+
+        # Capture the last interval
+        interval = sample_series.iloc[start_idx:]
+        lower = interval.index[0]
+        upper = interval.index[-1]
+        interval_points.append((lower, upper))
+        extend_lower = lower - np.timedelta64(1, "h")
+        extend_upper = upper + np.timedelta64(1, "h")
+        extended_intervals.append((extend_lower, extend_upper))
 
         return interval_points, extended_intervals
 
