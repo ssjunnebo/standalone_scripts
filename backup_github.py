@@ -128,7 +128,6 @@ def backup(user, password, access_token, organizations, dest):
                                                             repository.name
                                                             ))
                 logger.error(str(e))
-                continue
 
 
 def compress_and_move(source, final_dest):
