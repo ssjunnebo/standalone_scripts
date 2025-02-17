@@ -74,11 +74,10 @@ def backup(user, password, access_token, organizations, dest):
 
     for repository in chain(*repositories):
         logger.info("Github API rate limit: {}".format(github_instance.get_rate_limit()))
-        if password is not None and repository.private is True:
+        if access_token is not None and repository.private is True:
             source = repository.clone_url.replace(
-                                "https://",
-                                "https://{}:{}@".format(user, password)
-                                )
+                "https://", "https://{}:{}@".format(user, access_token)
+            )
         else:
             source = repository.clone_url
 
@@ -100,7 +99,7 @@ def backup(user, password, access_token, organizations, dest):
                     logger.error("There was an error fetching the branches "
                                  "from the repository {}, "
                                  "skipping it".format(repository.name))
-                    pass
+                    continue
             logger.info("Finished copying repo {}".format(repository.name))
         # Otherwise clone the repository and fetch all branches
         else:
@@ -115,7 +114,7 @@ def backup(user, password, access_token, organizations, dest):
                 logger.error("ERROR: Error cloning repository {}, "
                              "skipping it".format(repository.name))
                 logger.error(str(e))
-                pass
+                continue
             try:
                 with cd(repository_path):
                     check_call(track_all_branches, shell=True,
@@ -129,7 +128,6 @@ def backup(user, password, access_token, organizations, dest):
                                                             repository.name
                                                             ))
                 logger.error(str(e))
-                pass
 
 
 def compress_and_move(source, final_dest):
