@@ -73,6 +73,9 @@ def main(args):
     inst_id = conf["inst_id"]
     biomek_logs_db = couch['biomek_logs']
     db_view_run_finished = biomek_logs_db.view('names/run_finished')
+    run_finished_dict = {}
+    for row in db_view_run_finished:
+        run_finished_dict[(row.key[0], row.key[1])] = (row.value, row.id)
 
     log_files_list = os.listdir(args.log_file_path)
     logs_to_create = []
@@ -80,10 +83,10 @@ def main(args):
     save_docs = []
     for fname in log_files_list:
         if fname.startswith("Errors"):
-            if (not db_view_run_finished[[fname, inst_id]]):
+            if ((fname, inst_id) not in run_finished_dict):
                 logs_to_create.append(fname)
-            elif (db_view_run_finished[[fname, inst_id]].rows[0].value == False):
-                logs_to_update.append(db_view_run_finished[[fname, inst_id]].rows[0].id)
+            elif (run_finished_dict[(fname, inst_id)][0] == False):
+                logs_to_update.append(run_finished_dict[(fname, inst_id)][1])
 
 
     for fname in logs_to_create:
