@@ -4,7 +4,7 @@
 """
 
 import argparse
-from couchdb import Server
+from ibmcloudant import CouchDbSessionAuthenticator, cloudant_v1
 import datetime
 import json
 import requests
@@ -37,10 +37,16 @@ class CurrencyRates(object):
         return 1/self.rates[currency]
 
 
-def get_current(db, item):
-    rows = db.view("entire_document/by_date", descending=True, limit=1).rows
+def get_current(db_conn, item):
+    rows = db_conn.post_view(
+        db="pricing_exchange_rates",
+        ddoc="entire_document",
+        view="by_date",
+        descending=True,
+        limit=1
+    ).get_result()["rows"]
     if len(rows) != 0:
-        value = rows[0].value
+        value = rows[0]["value"]
         return value[item]
     return None
 
@@ -77,20 +83,18 @@ def main(config, fixer_io_config, push_to_server=False):
     with open(config) as settings_file:
         server_settings = yaml.load(settings_file, Loader=yaml.SafeLoader)
 
-    url_string = 'https://{}:{}@{}'.format(
-                    server_settings['statusdb'].get('username'),
-                    server_settings['statusdb'].get('password'),
-                    server_settings['statusdb'].get('url')
-                )
-    couch = Server(url_string)
-
-    db = couch['pricing_exchange_rates']
+    couch = cloudant_v1.CloudantV1(
+            authenticator=CouchDbSessionAuthenticator(
+                server_settings["statusdb"].get("username"), server_settings["statusdb"].get("password")
+            )
+        )
+    couch.set_service_url(server_settings["statusdb"].get("url"))
 
     # Check that new is not too strange compared to current.
     # This is a safety measure so that we have lower risk of having erroneus
     # exchange rates in the db.
-    current_usd = get_current(db, 'USD_in_SEK')
-    current_eur = get_current(db, 'EUR_in_SEK')
+    current_usd = get_current(couch, 'USD_in_SEK')
+    current_eur = get_current(couch, 'EUR_in_SEK')
 
     check_financial_crisis(current_usd, usd_to_sek, 'USD')
     check_financial_crisis(current_eur, eur_to_sek, 'EUR')
@@ -105,7 +109,10 @@ def main(config, fixer_io_config, push_to_server=False):
             raise Exception("Super stable currencies? Stale api would be my guess.")
 
     if push_to_server:
-        db.save(doc)
+        couch.post_document(
+            db="pricing_exchange_rates",
+            document=doc
+        )
     else:
         print(doc)
 
