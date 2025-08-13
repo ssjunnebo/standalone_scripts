@@ -9,13 +9,12 @@ import requests
 import argparse
 import yaml
 import os
-import pytz
 import datetime
 import numpy as np
 import pandas as pd
 import logging
 import time
-from couchdb import Server
+from ibmcloudant import CouchDbSessionAuthenticator, cloudant_v1
 
 
 class SensorPushConnection(object):
@@ -470,29 +469,33 @@ def main(
         with open(statusdb_config) as settings_file:
             server_settings = yaml.load(settings_file, Loader=yaml.SafeLoader)
 
-        url_string = "https://{}:{}@{}".format(
-            server_settings["statusdb"].get("username"),
-            server_settings["statusdb"].get("password"),
-            server_settings["statusdb"].get("url"),
+        couch = cloudant_v1.CloudantV1(
+            authenticator=CouchDbSessionAuthenticator(
+                server_settings["statusdb"].get("username"), server_settings["statusdb"].get("password")
+            )
         )
-        couch = Server(url_string)
-        sensorpush_db = couch["sensorpush"]
+        couch.set_service_url(server_settings["statusdb"].get("url"))
 
         for sd in sensor_documents:
             # Check if there already is a document for the sensor & date combination
-            view_call = sensorpush_db.view("entire_document/by_sensor_id_and_date")[
-                sd.sensor_id, sd.start_date_midnight
-            ]
+            view_call = couch.post_view(
+                db="sensorpush",
+                ddoc="entire_document",
+                view="by_sensor_id_and_date",
+                key=[sd.sensor_id, sd.start_date_midnight],
+            ).get_result()
 
             sd_dict = sd.format_for_statusdb()
 
-            if view_call.rows:
-                sd_dict = SensorDocument.merge_with(sd_dict, view_call.rows[0].value)
+            if view_call["rows"]:
+                sd_dict = SensorDocument.merge_with(sd_dict, view_call["rows"][0]["value"])
 
             if push:
                 logging.info(f'Saving {sd_dict["sensor_name"]} to statusdb')
                 try:
-                    sensorpush_db.save(sd_dict)
+                    couch.post_document(
+                        db="sensorpush", document=sd_dict
+                    ).get_result()
                 except Exception as e:
                     logging.error(
                         f"Error saving {sd_dict['sensor_name']} to statusdb: {e}"
