@@ -17,7 +17,7 @@ def load_manifest(path):
     samples_section = manifest_content.split("[SAMPLES]")[1].strip().split("\n")
     all_samples = load_sample_dataframe(samples_section)
     samples_info = all_samples[all_samples["Project"] != "Control"].copy()
-    controls_info = all_samples[all_samples["Project"] == "Control"].copy()
+    controls_info = all_samples[all_samples["Project"] == "Control"].copy() # So that we don't apply any changes to control samples
     return header_section, samples_info, controls_info
 
 def load_sample_dataframe(manifest_data):
@@ -39,7 +39,7 @@ def reverse_complement_index(index):
 
 @cli.command()
 @cli.option('--manifest_path', required=True, help='Path to the sample manifest. e.g. ~/fc/AVITI_run_manifest_2450545934_24-1214961_250722_154957_EunkyoungChoi_untrimmed.csv')
-@cli.option('--project', required=False, help='Project ID, e.g. P10001. Only the indexes of samples with this specific project ID will be changed')
+@cli.option('--project', multiple=True, required=False, help='Project ID, e.g. P10001. Only the indexes of samples with this specific project ID will be changed. Use multiple times for multiple projects.')
 @cli.option('--swap', is_flag=True, help='Swaps index 1 and 2.')
 @cli.option('--rc1', is_flag=True, help='Exchanges index 1 for its reverse compliment.')
 @cli.option('--rc2', is_flag=True, help='Exchanges index 2 for its reverse compliment.')
@@ -52,7 +52,7 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
 
     # Process the indexes based on the options provided
     if project:
-        mask = samples_info['SampleName'].apply(lambda x: x.split("_")[0] == project)
+        mask = samples_info['SampleName'].apply(lambda x: x.split("_")[0] in project)
     else:
         mask = pd.Series([True] * len(samples_info))
 
@@ -66,7 +66,7 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
         samples_info.loc[mask, ['Index1', 'Index2']] = samples_info.loc[mask, ['Index2', 'Index1']].values
         print("Swapping Index1 and Index2")
     if rc1 or rc2 or swap:
-        # Update lims_label if any changes were made unless the "Project" column is not "Control"
+        # Update lims_label if any changes were made
         samples_info.loc[mask, 'lims_label'] = samples_info.loc[mask, 'Index1'] + '-' + samples_info.loc[mask, 'Index2']
     for additional_sample in add_sample:
         if os.path.isfile(additional_sample):
