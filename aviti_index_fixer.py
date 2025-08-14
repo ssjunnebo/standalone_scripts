@@ -13,9 +13,12 @@ def load_manifest(path):
     """Load the manifest from the given path."""
     with open(path, 'r') as file:
         manifest_content = file.read()
-    header = manifest_content.split("[SAMPLES]")[0]
-    samples = manifest_content.split("[SAMPLES]")[1].strip().split("\n")
-    return header, samples
+    header_section = manifest_content.split("[SAMPLES]")[0]
+    samples_section = manifest_content.split("[SAMPLES]")[1].strip().split("\n")
+    all_samples = load_sample_dataframe(samples_section)
+    samples_info = all_samples[all_samples["Project"] != "Control"].copy()
+    controls_info = all_samples[all_samples["Project"] == "Control"].copy()
+    return header_section, samples_info, controls_info
 
 def load_sample_dataframe(manifest_data):
     """Extract the sample data from the manifest and convert it to a DataFrame."""
@@ -45,11 +48,8 @@ def reverse_complement_index(index):
 def main(manifest_path, project, swap, rc1, rc2, add_sample):
     """Main function to fix the samplesheet indexes for AVITI runs."""
     # Read the samplesheet
-    manifest_header, manifest_data = load_manifest(manifest_path)
-    
-    # Read the sample data into a data frame (look at Element_runs.py for an example)
-    samples_info = load_sample_dataframe(manifest_data)
-    
+    manifest_header, samples_info, controls_info = load_manifest(manifest_path)    
+
     # Process the indexes based on the options provided
     if project:
         mask = samples_info['SampleName'].apply(lambda x: x.split("_")[0] == project)
@@ -62,6 +62,9 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
         samples_info.loc[mask, 'Index2'] = samples_info.loc[mask, 'Index2'].apply(reverse_complement_index)
     if swap:
         samples_info.loc[mask, ['Index1', 'Index2']] = samples_info.loc[mask, ['Index2', 'Index1']].values
+    if rc1 or rc2 or swap:
+        # Update lims_label if any changes were made unless the "Project" column is not "Control"
+        samples_info.loc[mask, 'lims_label'] = samples_info.loc[mask, 'Index1'] + '-' + samples_info.loc[mask, 'Index2']
     for additional_sample in add_sample:
         if os.path.isfile(additional_sample):
             # If a file is provided, read it and append to the samples_info DataFrame
@@ -77,7 +80,7 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
     samples_info.sort_values(by=['Lane', 'SampleName'], inplace=True)
    
     # Generate the updated samplesheet
-    updated_samplesheet = manifest_header + "\n[SAMPLES]\n" + samples_info.to_csv(index=False, header=True)
+    updated_samplesheet = manifest_header + "\n[SAMPLES]\n" + samples_info.to_csv(index=False, header=True) + controls_info.to_csv(index=False, header=False)
    
     # Write the updated samplesheet to a new file
     output_path = manifest_path.replace('.csv', '_updated.csv')
