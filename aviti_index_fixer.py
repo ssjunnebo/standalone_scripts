@@ -3,25 +3,29 @@ import click as cli
 import pandas as pd
 
 NT_COMPLIMENT = {
-    'A': 'T',
-    'T': 'A',
-    'C': 'G',
-    'G': 'C',
+    "A": "T",
+    "T": "A",
+    "C": "G",
+    "G": "C",
 }
+
 
 def load_manifest(path):
     """Load the manifest from the given path."""
-    with open(path, 'r') as file:
+    with open(path, "r") as file:
         manifest_content = file.read()
-        
+
     header_section = manifest_content.split("[SAMPLES]")[0]
     samples_section = manifest_content.split("[SAMPLES]")[1].strip().split("\n")
-    
+
     all_samples = load_sample_dataframe(samples_section)
     samples_info = all_samples[all_samples["Project"] != "Control"].copy()
-    controls_info = all_samples[all_samples["Project"] == "Control"].copy() # So that we don't apply any changes to control samples
-    
+    controls_info = all_samples[
+        all_samples["Project"] == "Control"
+    ].copy()  # So that we don't apply any changes to control samples
+
     return header_section, samples_info, controls_info
+
 
 def load_sample_dataframe(manifest_data):
     """Load the sample data into a DataFrame."""
@@ -36,58 +40,94 @@ def load_sample_dataframe(manifest_data):
     samples_info = pd.DataFrame.from_dict(sample_dicts)
     return samples_info
 
+
 def reverse_complement_index(index):
     """Return the reverse complement of a given index."""
-    return ''.join(NT_COMPLIMENT[nuc] for nuc in reversed(index))
+    return "".join(NT_COMPLIMENT[nuc] for nuc in reversed(index))
+
 
 @cli.command()
-@cli.option('--manifest_path', required=True, help='Path to the sample manifest. e.g. ~/fc/AVITI_run_manifest_2450545934_24-1214961_250722_154957_EunkyoungChoi_untrimmed.csv')
-@cli.option('--project', multiple=True, required=False, help='Project ID, e.g. P10001. Only the indexes of samples with this specific project ID will be changed. Use multiple times for multiple projects.')
-@cli.option('--swap', is_flag=True, help='Swaps index 1 and 2.')
-@cli.option('--rc1', is_flag=True, help='Exchanges index 1 for its reverse compliment.')
-@cli.option('--rc2', is_flag=True, help='Exchanges index 2 for its reverse compliment.')
-@cli.option('--add_sample', multiple=True, help='Include additional sample(s). Use multiple times for multiple samples, or provide a file. Each new sample should have the same format as in the existing manifest. Example: --add_sample P12345,ATCG,CGTA,1,A__Project_25_16,301-10-10-301,ATCG-CGTA,')
-
+@cli.option(
+    "--manifest_path",
+    required=True,
+    help="Path to the sample manifest. e.g. ~/fc/AVITI_run_manifest_2450545934_24-1214961_250722_154957_EunkyoungChoi_untrimmed.csv",
+)
+@cli.option(
+    "--project",
+    multiple=True,
+    required=False,
+    help="Project ID, e.g. P10001. Only the indexes of samples with this specific project ID will be changed. Use multiple times for multiple projects.",
+)
+@cli.option("--swap", is_flag=True, help="Swaps index 1 and 2.")
+@cli.option("--rc1", is_flag=True, help="Exchanges index 1 for its reverse compliment.")
+@cli.option("--rc2", is_flag=True, help="Exchanges index 2 for its reverse compliment.")
+@cli.option(
+    "--add_sample",
+    multiple=True,
+    help="Include additional sample(s). Use multiple times for multiple samples, or provide a file. Each new sample should have the same format as in the existing manifest. Example: --add_sample P12345,ATCG,CGTA,1,A__Project_25_16,301-10-10-301,ATCG-CGTA,",
+)
 def main(manifest_path, project, swap, rc1, rc2, add_sample):
     """Main function to fix the samplesheet indexes for AVITI runs."""
-    manifest_header, samples_info, controls_info = load_manifest(manifest_path)    
+    manifest_header, samples_info, controls_info = load_manifest(manifest_path)
 
     if project:
-        mask = samples_info['SampleName'].apply(lambda x: x.split("_")[0] in project)
+        mask = samples_info["SampleName"].apply(lambda x: x.split("_")[0] in project)
     else:
         mask = pd.Series([True] * len(samples_info))
 
     if rc1:
-        samples_info.loc[mask, 'Index1'] = samples_info.loc[mask, 'Index1'].apply(reverse_complement_index)
+        samples_info.loc[mask, "Index1"] = samples_info.loc[mask, "Index1"].apply(
+            reverse_complement_index
+        )
         print("Reverse complementing Index1")
     if rc2:
-        samples_info.loc[mask, 'Index2'] = samples_info.loc[mask, 'Index2'].apply(reverse_complement_index)
+        samples_info.loc[mask, "Index2"] = samples_info.loc[mask, "Index2"].apply(
+            reverse_complement_index
+        )
         print("Reverse complementing Index2")
     if swap:
-        samples_info.loc[mask, ['Index1', 'Index2']] = samples_info.loc[mask, ['Index2', 'Index1']].values
+        samples_info.loc[mask, ["Index1", "Index2"]] = samples_info.loc[
+            mask, ["Index2", "Index1"]
+        ].values
         print("Swapping Index1 and Index2")
     if rc1 or rc2 or swap:
         # Update lims_label if any changes were made
-        samples_info.loc[mask, 'lims_label'] = samples_info.loc[mask, 'Index1'] + '-' + samples_info.loc[mask, 'Index2']
+        samples_info.loc[mask, "lims_label"] = (
+            samples_info.loc[mask, "Index1"] + "-" + samples_info.loc[mask, "Index2"]
+        )
     for additional_sample in add_sample:
         if os.path.isfile(additional_sample):
             additional_samples = pd.read_csv(additional_sample, header=None)
             additional_samples.columns = samples_info.columns
         else:
-            additional_samples = pd.DataFrame([additional_sample.split(',')], columns=samples_info.columns)
+            additional_samples = pd.DataFrame(
+                [additional_sample.split(",")], columns=samples_info.columns
+            )
         samples_info = pd.concat([samples_info, additional_samples], ignore_index=True)
         if len(additional_samples) == 1:
-            print("Adding additional sample:", additional_samples['SampleName'].tolist()[0])
+            print(
+                "Adding additional sample:",
+                additional_samples["SampleName"].tolist()[0],
+            )
         else:
-            print("Adding additional samples:", (", ").join(additional_samples['SampleName'].tolist()))
+            print(
+                "Adding additional samples:",
+                (", ").join(additional_samples["SampleName"].tolist()),
+            )
 
-    samples_info['Lane'] = samples_info['Lane'].astype(int)
-    samples_info.sort_values(by=['Lane', 'SampleName'], inplace=True)
-   
-    updated_samplesheet = manifest_header + "\n[SAMPLES]\n" + samples_info.to_csv(index=False, header=True) + controls_info.to_csv(index=False, header=False)
-    output_path = manifest_path.replace('.csv', '_updated.csv')
-    with open(output_path, 'w') as output_file:
+    samples_info["Lane"] = samples_info["Lane"].astype(int)
+    samples_info.sort_values(by=["Lane", "SampleName"], inplace=True)
+
+    updated_samplesheet = (
+        manifest_header
+        + "\n[SAMPLES]\n"
+        + samples_info.to_csv(index=False, header=True)
+        + controls_info.to_csv(index=False, header=False)
+    )
+    output_path = manifest_path.replace(".csv", "_updated.csv")
+    with open(output_path, "w") as output_file:
         output_file.write(updated_samplesheet)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
