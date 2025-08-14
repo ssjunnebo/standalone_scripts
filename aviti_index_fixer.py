@@ -58,10 +58,13 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
 
     if rc1:
         samples_info.loc[mask, 'Index1'] = samples_info.loc[mask, 'Index1'].apply(reverse_complement_index)
+        print("Reverse complementing Index1")
     if rc2:
         samples_info.loc[mask, 'Index2'] = samples_info.loc[mask, 'Index2'].apply(reverse_complement_index)
+        print("Reverse complementing Index2")
     if swap:
         samples_info.loc[mask, ['Index1', 'Index2']] = samples_info.loc[mask, ['Index2', 'Index1']].values
+        print("Swapping Index1 and Index2")
     if rc1 or rc2 or swap:
         # Update lims_label if any changes were made unless the "Project" column is not "Control"
         samples_info.loc[mask, 'lims_label'] = samples_info.loc[mask, 'Index1'] + '-' + samples_info.loc[mask, 'Index2']
@@ -74,6 +77,10 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
             # If a sample is provided directly, create a DataFrame from it
             additional_samples = pd.DataFrame([additional_sample.split(',')], columns=samples_info.columns)
         samples_info = pd.concat([samples_info, additional_samples], ignore_index=True)
+        if len(additional_samples) == 1:
+            print("Adding additional sample:", additional_samples['SampleName'].tolist()[0])
+        else:
+            print("Adding additional samples:", (", ").join(additional_samples['SampleName'].tolist()))
 
     # Sort the samples by lane and SampleName
     samples_info['Lane'] = samples_info['Lane'].astype(int)
