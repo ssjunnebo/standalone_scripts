@@ -8,12 +8,19 @@ Given a run manifest for Aviti, it generates a new one with the provided command
 #### Usage
 Examples:
 - Reverse complement index 1 and 2 for project P12345 and P67890:
+
 ```python aviti_index_fixer.py --manifest_path AVITI_run_manifest_2450545934_24-1214961_250722_154957_EunkyoungChoi_untrimmed.csv --rc1 --rc2 --project P12345 --project P67890```
+
 - Swap indexes for all samples in the manifest:
+
 ```python aviti_index_fixer.py --manifest_path AVITI_run_manifest_2450545934_24-1214961_250722_154957_EunkyoungChoi_untrimmed.csv --swap```
+
 - Include additional samples to the manifest, specifying the samples on the commandline:
+
 ```python aviti_index_fixer.py --manifest_path AVITI_run_manifest_2450545934_24-1214961_250722_154957_EunkyoungChoi_untrimmed.csv --add_sample "P12345_1097,ATAC,AGGC,1,A__Project_25_16,301-10-10-301,ATAC-AGGC," --add_sample "P12345_1098,GTAC,GGGC,1,A__Project_25_16,301-10-10-301,GTAC-GGGC,"```
+
 - Include additional samples to the manifest, specifying the samples in a csv file (each line in the file needs to have the same format as in the manifest):
+
 ```python aviti_index_fixer.py --manifest_path AVITI_run_manifest_2450545934_24-1214961_250722_154957_EunkyoungChoi_untrimmed.csv --add_sample samples.csv```
 
 #### Dependencies
