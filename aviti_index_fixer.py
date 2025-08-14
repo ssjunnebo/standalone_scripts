@@ -46,17 +46,29 @@ def main(manifest_path, project, swap, rc1, rc2):
     """Main function to fix the samplesheet indexes for AVITI runs."""
     # Read the samplesheet
     manifest_header, manifest_data = load_manifest(manifest_path)
+    
     # Read the sample data into a data frame (look at Element_runs.py for an example)
     samples_info = load_sample_dataframe(manifest_data)
+    
     # Process the indexes based on the options provided
+    if project:
+        mask = samples_info['SampleName'].apply(lambda x: x.split("_")[0] == project)
+    else:
+        mask = pd.Series([True] * len(samples_info))
+
     if rc1:
-        samples_info['Index1'] = samples_info['Index1'].apply(reverse_complement_index)
+        samples_info.loc[mask, 'Index1'] = samples_info.loc[mask, 'Index1'].apply(reverse_complement_index)
     if rc2:
-        samples_info['Index2'] = samples_info['Index2'].apply(reverse_complement_index)
+        samples_info.loc[mask, 'Index2'] = samples_info.loc[mask, 'Index2'].apply(reverse_complement_index)
     if swap:
-        samples_info[['Index1', 'Index2']] = samples_info[['Index2', 'Index1']]
-    print(samples_info)
+        samples_info.loc[mask, ['Index1', 'Index2']] = samples_info.loc[mask, ['Index2', 'Index1']].values
+    
     # Generate the updated samplesheet
+    updated_samplesheet = manifest_header + "\n[SAMPLES]\n" + samples_info.to_csv(index=False, header=True).strip()
+    # Write the updated samplesheet to a new file
+    output_path = manifest_path.replace('.csv', '_updates.csv')
+    with open(output_path, 'w') as output_file:
+        output_file.write(updated_samplesheet)
 
 if __name__ == '__main__':
     main()
