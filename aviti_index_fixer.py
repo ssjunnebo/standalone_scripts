@@ -1,27 +1,30 @@
+import os
 import click as cli
 import pandas as pd
-import os
 
 NT_COMPLIMENT = {
     'A': 'T',
     'T': 'A',
     'C': 'G',
-    'G': 'C'
+    'G': 'C',
 }
 
 def load_manifest(path):
     """Load the manifest from the given path."""
     with open(path, 'r') as file:
         manifest_content = file.read()
+        
     header_section = manifest_content.split("[SAMPLES]")[0]
     samples_section = manifest_content.split("[SAMPLES]")[1].strip().split("\n")
+    
     all_samples = load_sample_dataframe(samples_section)
     samples_info = all_samples[all_samples["Project"] != "Control"].copy()
     controls_info = all_samples[all_samples["Project"] == "Control"].copy() # So that we don't apply any changes to control samples
+    
     return header_section, samples_info, controls_info
 
 def load_sample_dataframe(manifest_data):
-    """Extract the sample data from the manifest and convert it to a DataFrame."""
+    """Load the sample data into a DataFrame."""
     header = manifest_data[0]
     sample_rows = manifest_data[1:]
 
@@ -47,10 +50,8 @@ def reverse_complement_index(index):
 
 def main(manifest_path, project, swap, rc1, rc2, add_sample):
     """Main function to fix the samplesheet indexes for AVITI runs."""
-    # Read the samplesheet
     manifest_header, samples_info, controls_info = load_manifest(manifest_path)    
 
-    # Process the indexes based on the options provided
     if project:
         mask = samples_info['SampleName'].apply(lambda x: x.split("_")[0] in project)
     else:
@@ -70,11 +71,9 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
         samples_info.loc[mask, 'lims_label'] = samples_info.loc[mask, 'Index1'] + '-' + samples_info.loc[mask, 'Index2']
     for additional_sample in add_sample:
         if os.path.isfile(additional_sample):
-            # If a file is provided, read it and append to the samples_info DataFrame
             additional_samples = pd.read_csv(additional_sample, header=None)
             additional_samples.columns = samples_info.columns
         else:
-            # If a sample is provided directly, create a DataFrame from it
             additional_samples = pd.DataFrame([additional_sample.split(',')], columns=samples_info.columns)
         samples_info = pd.concat([samples_info, additional_samples], ignore_index=True)
         if len(additional_samples) == 1:
@@ -82,14 +81,10 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
         else:
             print("Adding additional samples:", (", ").join(additional_samples['SampleName'].tolist()))
 
-    # Sort the samples by lane and SampleName
     samples_info['Lane'] = samples_info['Lane'].astype(int)
     samples_info.sort_values(by=['Lane', 'SampleName'], inplace=True)
    
-    # Generate the updated samplesheet
     updated_samplesheet = manifest_header + "\n[SAMPLES]\n" + samples_info.to_csv(index=False, header=True) + controls_info.to_csv(index=False, header=False)
-   
-    # Write the updated samplesheet to a new file
     output_path = manifest_path.replace('.csv', '_updated.csv')
     with open(output_path, 'w') as output_file:
         output_file.write(updated_samplesheet)
