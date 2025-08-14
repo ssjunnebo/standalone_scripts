@@ -1,5 +1,6 @@
 import click as cli
 import pandas as pd
+import os
 
 NT_COMPLIMENT = {
     'A': 'T',
@@ -33,16 +34,15 @@ def reverse_complement_index(index):
     """Return the reverse complement of a given index."""
     return ''.join(NT_COMPLIMENT[nuc] for nuc in reversed(index))
 
-
 @cli.command()
 @cli.option('--manifest_path', required=True, help='Path to the sample manifest. e.g. ~/fc/AVITI_run_manifest_2450545934_24-1214961_250722_154957_EunkyoungChoi_untrimmed.csv')
 @cli.option('--project', required=False, help='Project ID, e.g. P10001. Only the indexes of samples with this specific project ID will be changed')
 @cli.option('--swap', is_flag=True, help='Swaps index 1 and 2.')
 @cli.option('--rc1', is_flag=True, help='Exchanges index 1 for its reverse compliment.')
 @cli.option('--rc2', is_flag=True, help='Exchanges index 2 for its reverse compliment.')
-# TODO: Add option to include additional samples
+@cli.option('--add_sample', multiple=True, help='Include additional sample(s). Use multiple times for multiple samples, or provide a file. Each new sample should have the same format as in the existing manifest. Example: --add_sample P12345,ATCG,CGTA,1,A__Project_25_16,301-10-10-301,ATCG-CGTA,')
 
-def main(manifest_path, project, swap, rc1, rc2):
+def main(manifest_path, project, swap, rc1, rc2, add_sample):
     """Main function to fix the samplesheet indexes for AVITI runs."""
     # Read the samplesheet
     manifest_header, manifest_data = load_manifest(manifest_path)
@@ -62,11 +62,25 @@ def main(manifest_path, project, swap, rc1, rc2):
         samples_info.loc[mask, 'Index2'] = samples_info.loc[mask, 'Index2'].apply(reverse_complement_index)
     if swap:
         samples_info.loc[mask, ['Index1', 'Index2']] = samples_info.loc[mask, ['Index2', 'Index1']].values
-    
+    for additional_sample in add_sample:
+        if os.path.isfile(additional_sample):
+            # If a file is provided, read it and append to the samples_info DataFrame
+            additional_samples = pd.read_csv(additional_sample, header=None)
+            additional_samples.columns = samples_info.columns
+        else:
+            # If a sample is provided directly, create a DataFrame from it
+            additional_samples = pd.DataFrame([additional_sample.split(',')], columns=samples_info.columns)
+        samples_info = pd.concat([samples_info, additional_samples], ignore_index=True)
+
+    # Sort the samples by lane and SampleName
+    samples_info['Lane'] = samples_info['Lane'].astype(int)
+    samples_info.sort_values(by=['Lane', 'SampleName'], inplace=True)
+   
     # Generate the updated samplesheet
-    updated_samplesheet = manifest_header + "\n[SAMPLES]\n" + samples_info.to_csv(index=False, header=True).strip()
+    updated_samplesheet = manifest_header + "\n[SAMPLES]\n" + samples_info.to_csv(index=False, header=True)
+   
     # Write the updated samplesheet to a new file
-    output_path = manifest_path.replace('.csv', '_updates.csv')
+    output_path = manifest_path.replace('.csv', '_updated.csv')
     with open(output_path, 'w') as output_file:
         output_file.write(updated_samplesheet)
 
