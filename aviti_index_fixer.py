@@ -46,6 +46,33 @@ def reverse_complement_index(index):
     return "".join(NT_COMPLIMENT[nuc] for nuc in reversed(index))
 
 
+def print_running_note(project, change_type):
+    """Print a note about the changes being made."""
+    if project:
+        project_text = "project " if len(project) == 1 else "projects "
+        project_text += (
+            project[0]
+            if len(project) == 1
+            else " and ".join(project)
+            if len(project) == 2
+            else ", ".join(project)
+        )
+    else:
+        project_text = "all samples"
+    if change_type == "swap":
+        print(
+            f"Index 1 and 2 in {project_text} were switched prior to re-demultiplexing."
+        )
+    elif change_type == "rc1":
+        print(
+            f"Index 1 in {project_text} was converted to reverse complement prior to re-demultiplexing."
+        )
+    elif change_type == "rc2":
+        print(
+            f"Index 2 in {project_text} was converted to reverse complement prior to re-demultiplexing",
+        )
+
+
 @cli.command()
 @cli.option(
     "--manifest_path",
@@ -79,41 +106,62 @@ def main(manifest_path, project, swap, rc1, rc2, add_sample):
         samples_info.loc[mask, "Index1"] = samples_info.loc[mask, "Index1"].apply(
             reverse_complement_index
         )
-        print("Reverse complementing Index1")
+        print_running_note(project, "rc1")
     if rc2:
         samples_info.loc[mask, "Index2"] = samples_info.loc[mask, "Index2"].apply(
             reverse_complement_index
         )
-        print("Reverse complementing Index2")
+        print_running_note(project, "rc2")
     if swap:
         samples_info.loc[mask, ["Index1", "Index2"]] = samples_info.loc[
             mask, ["Index2", "Index1"]
         ].values
-        print("Swapping Index1 and Index2")
+        print_running_note(project, "swap")
+
     if rc1 or rc2 or swap:
         # Update lims_label if any changes were made
         samples_info.loc[mask, "lims_label"] = (
             samples_info.loc[mask, "Index1"] + "-" + samples_info.loc[mask, "Index2"]
         )
+
+    additional_samples_table = {}
     for additional_sample in add_sample:
         if os.path.isfile(additional_sample):
             additional_samples = pd.read_csv(additional_sample, header=None)
             additional_samples.columns = samples_info.columns
+            for _, row in additional_samples.iterrows():
+                additional_samples_table[row["SampleName"]] = {
+                    "index": f"{row['Index1']}-{row['Index2']}",
+                    "lane": row["Lane"],
+                }
         else:
             additional_samples = pd.DataFrame(
                 [additional_sample.split(",")], columns=samples_info.columns
             )
+            additional_samples_table[additional_samples["SampleName"].tolist()[0]] = {
+                "index": f"{additional_samples['Index1'].tolist()[0]}-{additional_samples['Index2'].tolist()[0]}",
+                "lane": additional_samples["Lane"].tolist()[0],
+            }
         samples_info = pd.concat([samples_info, additional_samples], ignore_index=True)
-        if len(additional_samples) == 1:
-            print(
-                "Adding additional sample:",
-                additional_samples["SampleName"].tolist()[0],
+    if len(additional_samples_table) == 1:
+        sample_name = list(additional_samples_table.keys())[0]
+        print(
+            f"Sample {sample_name} with indexes",
+            f"{additional_samples_table[sample_name]['index']}",
+            f"was added to lane {additional_samples_table[sample_name]['lane']}",
+            "prior to re-demultiplexing.",
+        )
+    elif len(additional_samples_table) > 1:
+        print(
+            "The following samples were added to the manifest prior to re-demultiplexing:\n"
+            "SampleName, Index1-Index2, Lane\n"
+            + "\n".join(
+                [
+                    f"{name}, {info['index']}, {info['lane']}"
+                    for name, info in additional_samples_table.items()
+                ]
             )
-        else:
-            print(
-                "Adding additional samples:",
-                (", ").join(additional_samples["SampleName"].tolist()),
-            )
+        )
 
     samples_info["Lane"] = samples_info["Lane"].astype(int)
     samples_info.sort_values(by=["Lane", "SampleName"], inplace=True)
